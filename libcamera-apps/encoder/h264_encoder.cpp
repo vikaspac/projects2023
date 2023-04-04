@@ -34,7 +34,7 @@ static int get_v4l2_colorspace(std::optional<libcamera::ColorSpace> const &cs)
 	else if (cs == libcamera::ColorSpace::Smpte170m)
 		return V4L2_COLORSPACE_SMPTE170M;
 
-	LOG(1, "H264: surprising colour space: " << libcamera::ColorSpace::toString(cs));
+	LOG(1, "h264_encoder.cpp: H264: surprising colour space: " << libcamera::ColorSpace::toString(cs));
 	return V4L2_COLORSPACE_SMPTE170M;
 }
 
@@ -44,10 +44,11 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	// First open the encoder device. Maybe we should double-check its "caps".
 
 	const char device_name[] = "/dev/video11";
+	LOG(2, "h264_encoder.cpp: H264Encoder Constructor()");
 	fd_ = open(device_name, O_RDWR, 0);
 	if (fd_ < 0)
 		throw std::runtime_error("failed to open V4L2 H264 encoder");
-	LOG(2, "Opened H264Encoder on " << device_name << " as fd " << fd_);
+	LOG(2, "h264_encoder.cpp: Opened H264Encoder on " << device_name << " as fd " << fd_);
 
 	// Apply any options->
 
@@ -56,6 +57,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	{
 		ctrl.id = V4L2_CID_MPEG_VIDEO_BITRATE;
 		ctrl.value = options->bitrate;
+		LOG(3, "h264_encoder.cpp: ctrl.id = V4L2_CID_MPEG_VIDEO_BITRATE, ctrl.value = " << ctrl.value);
 		if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) < 0)
 			throw std::runtime_error("failed to set bitrate");
 	}
@@ -70,6 +72,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 			throw std::runtime_error("no such profile " + options->profile);
 		ctrl.id = V4L2_CID_MPEG_VIDEO_H264_PROFILE;
 		ctrl.value = it->second;
+		LOG(3, "h264_encoder.cpp: ctrl.id = V4L2_CID_MPEG_VIDEO_H264_PROFILE, ctrl.value = " << ctrl.value);
 		if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) < 0)
 			throw std::runtime_error("failed to set profile");
 	}
@@ -84,6 +87,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 			throw std::runtime_error("no such level " + options->level);
 		ctrl.id = V4L2_CID_MPEG_VIDEO_H264_LEVEL;
 		ctrl.value = it->second;
+		LOG(3, "h264_encoder.cpp: ctrl.id = V4L2_CID_MPEG_VIDEO_H264_LEVEL, ctrl.value = " << ctrl.value);
 		if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) < 0)
 			throw std::runtime_error("failed to set level");
 	}
@@ -91,6 +95,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	{
 		ctrl.id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD;
 		ctrl.value = options->intra;
+		LOG(3, "h264_encoder.cpp: ctrl.id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD, ctrl.value = " << ctrl.value);
 		if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) < 0)
 			throw std::runtime_error("failed to set intra period");
 	}
@@ -98,6 +103,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	{
 		ctrl.id = V4L2_CID_MPEG_VIDEO_REPEAT_SEQ_HEADER;
 		ctrl.value = 1;
+		LOG(3, "h264_encoder.cpp: ctrl.id = V4L2_CID_MPEG_VIDEO_REPEAT_SEQ_HEADER, ctrl.value = " << ctrl.value);
 		if (xioctl(fd_, VIDIOC_S_CTRL, &ctrl) < 0)
 			throw std::runtime_error("failed to set inline headers");
 	}
@@ -115,6 +121,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
 	fmt.fmt.pix_mp.colorspace = get_v4l2_colorspace(info.colour_space);
 	fmt.fmt.pix_mp.num_planes = 1;
+	LOG(3, "h264_encoder.cpp: VIDIOC_S_FMT V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE WxH = " << fmt.fmt.pix_mp.width << " x " << fmt.fmt.pix_mp.height);
 	if (xioctl(fd_, VIDIOC_S_FMT, &fmt) < 0)
 		throw std::runtime_error("failed to set output format");
 
@@ -128,6 +135,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	fmt.fmt.pix_mp.num_planes = 1;
 	fmt.fmt.pix_mp.plane_fmt[0].bytesperline = 0;
 	fmt.fmt.pix_mp.plane_fmt[0].sizeimage = 512 << 10;
+	LOG(3, "h264_encoder.cpp: VIDIOC_S_FMT V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE WxH = " << fmt.fmt.pix_mp.width << " x " << fmt.fmt.pix_mp.height);
 	if (xioctl(fd_, VIDIOC_S_FMT, &fmt) < 0)
 		throw std::runtime_error("failed to set capture format");
 
@@ -138,6 +146,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 		parm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 		parm.parm.output.timeperframe.numerator = 90000.0 / frate;
 		parm.parm.output.timeperframe.denominator = 90000;
+		LOG(3, "h264_encoder.cpp: VIDIOC_S_PARM V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE  frate = " << frate);
 		if (xioctl(fd_, VIDIOC_S_PARM, &parm) < 0)
 			throw std::runtime_error("failed to set streamparm");
 	}
@@ -151,9 +160,10 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	reqbufs.count = NUM_OUTPUT_BUFFERS;
 	reqbufs.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	reqbufs.memory = V4L2_MEMORY_DMABUF;
+	LOG(3, "h264_encoder.cpp: VIDIOC_REQBUFS NUM_OUTPUT_BUFFERS V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE V4L2_MEMORY_DMABUF");
 	if (xioctl(fd_, VIDIOC_REQBUFS, &reqbufs) < 0)
 		throw std::runtime_error("request for output buffers failed");
-	LOG(2, "Got " << reqbufs.count << " output buffers");
+	LOG(2, "h264_encoder.cpp: Got " << reqbufs.count << " output buffers");
 
 	// We have to maintain a list of the buffers we can use when our caller gives
 	// us another frame to encode.
@@ -164,9 +174,10 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	reqbufs.count = NUM_CAPTURE_BUFFERS;
 	reqbufs.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	reqbufs.memory = V4L2_MEMORY_MMAP;
+	LOG(3, "h264_encoder.cpp: VIDIOC_REQBUFS NUM_CAPTURE_BUFFERS V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE V4L2_MEMORY_MMAP");
 	if (xioctl(fd_, VIDIOC_REQBUFS, &reqbufs) < 0)
 		throw std::runtime_error("request for capture buffers failed");
-	LOG(2, "Got " << reqbufs.count << " capture buffers");
+	LOG(2, "h264_encoder.cpp: Got " << reqbufs.count << " capture buffers");
 	num_capture_buffers_ = reqbufs.count;
 
 	for (unsigned int i = 0; i < reqbufs.count; i++)
@@ -178,6 +189,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 		buffer.index = i;
 		buffer.length = 1;
 		buffer.m.planes = planes;
+		LOG(3, "h264_encoder.cpp: VIDIOC_QUERYBUF V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE");
 		if (xioctl(fd_, VIDIOC_QUERYBUF, &buffer) < 0)
 			throw std::runtime_error("failed to capture query buffer " + std::to_string(i));
 		buffers_[i].mem = mmap(0, buffer.m.planes[0].length, PROT_READ | PROT_WRITE, MAP_SHARED, fd_,
@@ -187,6 +199,7 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 		buffers_[i].size = buffer.m.planes[0].length;
 		// Whilst we're going through all the capture buffers, we may as well queue
 		// them ready for the encoder to write into.
+		LOG(3, "h264_encoder.cpp: VIDIOC_QBUF V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE buffer.index = " << i);
 		if (xioctl(fd_, VIDIOC_QBUF, &buffer) < 0)
 			throw std::runtime_error("failed to queue capture buffer " + std::to_string(i));
 	}
@@ -194,19 +207,24 @@ H264Encoder::H264Encoder(VideoOptions const *options, StreamInfo const &info)
 	// Enable streaming and we're done.
 
 	v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	LOG(3, "h264_encoder.cpp: VIDIOC_STREAMON V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE");
 	if (xioctl(fd_, VIDIOC_STREAMON, &type) < 0)
 		throw std::runtime_error("failed to start output streaming");
 	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	LOG(3, "h264_encoder.cpp: VIDIOC_STREAMON V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE");
 	if (xioctl(fd_, VIDIOC_STREAMON, &type) < 0)
 		throw std::runtime_error("failed to start capture streaming");
-	LOG(2, "Codec streaming started");
+	LOG(2, "h264_encoder.cpp: Codec streaming started");
 
+	LOG(3, "h264_encoder.cpp: start output_thread_");
 	output_thread_ = std::thread(&H264Encoder::outputThread, this);
+	LOG(3, "h264_encoder.cpp: start poll_thread_");
 	poll_thread_ = std::thread(&H264Encoder::pollThread, this);
 }
 
 H264Encoder::~H264Encoder()
 {
+	LOG(2, "h264_encoder.cpp: ~H264Encoder Destructor()");
 	abortPoll_ = true;
 	poll_thread_.join();
 	abortOutput_ = true;
@@ -216,31 +234,37 @@ H264Encoder::~H264Encoder()
 	// buffers that we requested. The capture ones need to be "munmapped" first.
 
 	v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	LOG(3, "h264_encoder.cpp: VIDIOC_STREAMOFF V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE");
 	if (xioctl(fd_, VIDIOC_STREAMOFF, &type) < 0)
-		LOG(1, "Failed to stop output streaming");
+		LOG(1, "h264_encoder.cpp: Failed to stop output streaming");
 	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	LOG(3, "h264_encoder.cpp: VIDIOC_STREAMOFF V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE");
 	if (xioctl(fd_, VIDIOC_STREAMOFF, &type) < 0)
-		LOG(1, "Failed to stop capture streaming");
+		LOG(1, "h264_encoder.cpp: Failed to stop capture streaming");
 
 	v4l2_requestbuffers reqbufs = {};
 	reqbufs.count = 0;
 	reqbufs.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	reqbufs.memory = V4L2_MEMORY_DMABUF;
+	LOG(3, "h264_encoder.cpp: VIDIOC_REQBUFS V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE V4L2_MEMORY_DMABUF");
 	if (xioctl(fd_, VIDIOC_REQBUFS, &reqbufs) < 0)
-		LOG(1, "Request to free output buffers failed");
+		LOG(1, "h264_encoder.cpp: Request to free output buffers failed");
 
-	for (int i = 0; i < num_capture_buffers_; i++)
+	for (int i = 0; i < num_capture_buffers_; i++) {
+		LOG(3, "h264_encoder.cpp: munmap capture_buffers buffer index = " << i);
 		if (munmap(buffers_[i].mem, buffers_[i].size) < 0)
-			LOG(1, "Failed to unmap buffer");
+			LOG(1, "h264_encoder.cpp: Failed to unmap buffer");
+	}
 	reqbufs = {};
 	reqbufs.count = 0;
 	reqbufs.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	reqbufs.memory = V4L2_MEMORY_MMAP;
+	LOG(3, "h264_encoder.cpp: VIDIOC_REQBUFS V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE V4L2_MEMORY_MMAP");
 	if (xioctl(fd_, VIDIOC_REQBUFS, &reqbufs) < 0)
-		LOG(1, "Request to free capture buffers failed");
+		LOG(1, "h264_encoder.cpp: Request to free capture buffers failed");
 
 	close(fd_);
-	LOG(2, "H264Encoder closed");
+	LOG(2, "h264_encoder.cpp: H264Encoder closed");
 }
 
 void H264Encoder::EncodeBuffer(int fd, size_t size, void *mem, StreamInfo const &info, int64_t timestamp_us)
@@ -268,6 +292,7 @@ void H264Encoder::EncodeBuffer(int fd, size_t size, void *mem, StreamInfo const 
 	buf.m.planes[0].m.fd = fd;
 	buf.m.planes[0].bytesused = size;
 	buf.m.planes[0].length = size;
+	LOG(3, "h264_encoder.cpp: VIDIOC_QBUF OUTPUT_MPLANE buf.index = " << buf.index << ", time = " << buf.timestamp.tv_usec << " uSecs, length = " << size);
 	if (xioctl(fd_, VIDIOC_QBUF, &buf) < 0)
 		throw std::runtime_error("failed to queue input to codec");
 }
@@ -305,6 +330,7 @@ void H264Encoder::pollThread()
 				{
 					std::lock_guard<std::mutex> lock(input_buffers_available_mutex_);
 					input_buffers_available_.push(buf.index);
+					LOG(3, "h264_encoder.cpp: VIDIOC_DQBUF OUTPUT_MPLANE buf.index = " << buf.index);
 				}
 				input_done_callback_(nullptr);
 			}
@@ -328,6 +354,7 @@ void H264Encoder::pollThread()
 									buf.index,
 									!!(buf.flags & V4L2_BUF_FLAG_KEYFRAME),
 									timestamp_us };
+			LOG(3, "h264_encoder.cpp: VIDIOC_DQBUF CAPTURE_MPLANE buf.index = " << buf.index << " time = " << buf.timestamp.tv_usec << " uSecs, buf_flag = " << (buf.flags & V4L2_BUF_FLAG_KEYFRAME));
 				std::lock_guard<std::mutex> lock(output_mutex_);
 				output_queue_.push(item);
 				output_cond_var_.notify_one();
@@ -372,7 +399,10 @@ void H264Encoder::outputThread()
 		buf.m.planes = planes;
 		buf.m.planes[0].bytesused = 0;
 		buf.m.planes[0].length = item.length;
+		LOG(3, "h264_encoder.cpp: VIDIOC_QBUF CAPTURE_MPLANE buf.index = " << buf.index << " length = " << item.length);
 		if (xioctl(fd_, VIDIOC_QBUF, &buf) < 0)
 			throw std::runtime_error("failed to re-queue encoded buffer");
 	}
 }
+
+
